@@ -9,6 +9,7 @@ from sklearn.model_selection import train_test_split
 NUM_CLASSES = 3
 NUM_FEATURES = 13
 RANDOM_SEED = 27
+LEARNING_RATE = 0.01
 
 # Import the dataset from sklearn
 data = load_wine()
@@ -50,14 +51,65 @@ class WineModel(nn.Module):
     
 # Create model
 model = WineModel(input_features=13,
-                  output_features=3)
+                  output_features=3).to(device)
 
 # Setup loss fn & optimizer
 loss_fn = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(params=model.parameters(),
-                             lr=0.01)
+                             lr=LEARNING_RATE)
+
+# Calculate prediction accuracy fn
+def accuracy_fn(y_true, y_pred):
+    """Computes the accuracy of the predictions to the actual label"""
+    correct = torch.eq(y_true, y_pred).sum().item()
+    acc = (correct / len(y_true)) * 100
+    return acc
 
 # Set seeds
 torch.manual_seed(27)
 torch.mps.manual_seed(27)
 np.random.seed(27)
+
+# Set the number of epochs
+epochs = 1001
+
+# Put the data on the target device
+X_train, y_train = X_train.to(device), y_train.to(device)
+X_test, y_test = X_test.to(device), y_test.to(device)
+
+# Training & eval loop
+for epoch in range(epochs):
+    model.train()
+
+    # 1. Forward pass
+    y_logits = model(X_train)
+    y_pred = torch.argmax(torch.softmax(y_logits, dim=1), dim=1)
+
+    #2. Calculate loss
+    loss = loss_fn(y_logits, y_train)
+    acc = accuracy_fn(y_true=y_train, 
+                      y_pred=y_pred)
+
+    #3. Optimizer zero grad
+    optimizer.zero_grad()
+
+    # 4. Loss backward (backpropagation)
+    loss.backward()
+
+    # 5. Optimizer step (gradient descent)
+    optimizer.step()
+
+    model.eval()
+    with torch.inference_mode():
+        # 1. Forward pass
+        test_logits = model(X_test)
+        test_pred = torch.argmax(torch.softmax(test_logits, dim=1), dim=1)
+
+        # 2. Calculate loss
+        test_loss = loss_fn(test_logits, y_test)
+        test_acc = accuracy_fn(y_true=y_test, 
+                               y_pred=test_pred)
+
+        # 3. Print out what's happenin'
+        if epoch % 100 == 0:
+            print(f"Epoch: {epoch} | Loss: {loss:.5f}, Acc: {acc:.2f} | Test loss: {test_loss:.5f}, Test acc: {test_acc:.2f}")
